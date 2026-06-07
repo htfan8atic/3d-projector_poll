@@ -71,6 +71,8 @@ header p{color:var(--text-muted);font-size:14px;line-height:1.6;max-width:500px;
 .submit-btn:hover{opacity:.92;transform:translateY(-1px)}
 .submit-btn:active{transform:translateY(0)}
 .submit-btn:disabled{opacity:.45;cursor:not-allowed;transform:none}
+.reset-survey-btn{flex:0 0 auto;padding:16px 18px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text-muted);font-family:'DM Sans',sans-serif;font-size:13px;font-weight:500;cursor:pointer;transition:background .2s,color .2s;white-space:nowrap;}
+.reset-survey-btn:hover{background:var(--border);color:var(--text)}
 .vote-note{text-align:center;font-size:12px;color:var(--text-dim)}
 .voted-banner{background:rgba(61,214,140,.07);border:1px solid rgba(61,214,140,.18);border-radius:var(--radius);padding:13px 16px;margin-bottom:20px;font-size:13.5px;color:var(--green);display:none;line-height:1.5}
 .locked-banner{background:rgba(240,160,64,.08);border:1px solid rgba(240,160,64,.25);border-radius:var(--radius);padding:16px 18px;margin-bottom:20px;font-size:14px;color:var(--orange);display:none;line-height:1.6;text-align:center}
@@ -170,7 +172,10 @@ header p{color:var(--text-muted);font-size:14px;line-height:1.6;max-width:500px;
       <div class="q-title">Additional comments or projectors?</div>
       <textarea class="q-textarea" id="q4-text" placeholder="Any other thoughts, projectors not listed, or additional context…"></textarea>
     </div>
-    <button class="submit-btn" id="submit-btn" onclick="submitVote()">Submit My Responses</button>
+    <div style="display:flex;gap:8px;align-items:stretch;margin-bottom:10px">
+      <button class="reset-survey-btn" onclick="resetSurvey()" title="Clear your answers">↺ Reset My Answers</button>
+      <button class="submit-btn" id="submit-btn" onclick="submitVote()" style="margin-bottom:0;flex:1">Submit My Responses</button>
+    </div>
     <p class="vote-note" id="vote-note-text">Questions 1–3 are required. You can return later to update your responses and resubmit. Thanks for taking the time to do this.</p>
   </div>
   <div id="view-results" style="display:none">
@@ -225,8 +230,10 @@ async function fetchRemote(){
     if(rows.length){
       const d=rows[0].data;
       votes=d.votes||{};
-      if(d.choices&&d.choices.length)choices=d.choices;
-      else choices=[...DEFAULT_CHOICES];
+      // Merge stored choices with DEFAULT_CHOICES so nothing is ever lost
+      const stored=d.choices||[];
+      const merged=[...new Set([...DEFAULT_CHOICES,...stored])].sort((a,b)=>a.localeCompare(b));
+      choices=merged;
     } else {
       choices=[...DEFAULT_CHOICES];
       await pushRemote();
@@ -234,7 +241,7 @@ async function fetchRemote(){
     localStorage.setItem(SK_CACHE,JSON.stringify({votes,choices}));
   }catch(e){
     console.error('Supabase fetch error:',e);
-    try{const c=JSON.parse(localStorage.getItem(SK_CACHE)||'{}');votes=c.votes||{};if(c.choices&&c.choices.length)choices=c.choices;}catch(_){}
+    try{const c=JSON.parse(localStorage.getItem(SK_CACHE)||'{}');votes=c.votes||{};if(c.choices&&c.choices.length)choices=c.choices;else choices=[...DEFAULT_CHOICES];}catch(_){choices=[...DEFAULT_CHOICES];}
   }
 }
 
@@ -314,6 +321,7 @@ function renderManage(){const el=document.getElementById('manage-choices');el.in
 
 async function addChoice(){const inp=document.getElementById('new-choice-input'),name=inp.value.trim();if(!name)return;if(choices.includes(name)){showToast('Already in the list');return}choices.push(name);choices.sort((a,b)=>a.localeCompare(b));await pushRemote();inp.value='';initRankOrder();renderRankList();renderManage();updateStats();showToast('Added: '+name)}
 async function removeChoice(name){if(!confirm(`Remove "${name}" from the poll?\nThis will also remove it from existing votes.`))return;choices=choices.filter(c=>c!==name);Object.values(votes).forEach(v=>{if(v?.ranking)v.ranking=v.ranking.filter(c=>c!==name)});await pushRemote();initRankOrder();renderRankList();renderManage();updateStats();showToast('Removed: '+name)}
+function resetSurvey(){if(!confirm('Clear all your answers and start over?'))return;rankedSet=new Set();rankOrder=[...choices];renderRankList();document.getElementById('q2-text').value='';document.getElementById('q3-username').value='';document.getElementById('q4-text').value='';updateCharCount();document.getElementById('voted-banner').style.display='none';['q1-block','q2-block','q3-block'].forEach(id=>document.getElementById(id).classList.remove('error'));showToast('Answers cleared');}
 function exportData(){const blob=new Blob([JSON.stringify({choices,votes,exportedAt:new Date().toISOString()},null,2)],{type:'application/json'});const a=Object.assign(document.createElement('a'),{href:URL.createObjectURL(blob),download:'projector-poll-export.json'});a.click();URL.revokeObjectURL(a.href)}
 let toastTimer;
 function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),3000)}
